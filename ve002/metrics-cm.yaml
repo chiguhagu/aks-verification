@@ -1,0 +1,139 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: metrics
+  labels:
+    group: prometheus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  labels:
+    group: prometheus
+  namespace: metrics
+data:
+  prometheus.yaml: |-
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        datacenter: global
+    rule_files:
+    scrape_configs:
+    - job_name: 'istio-prometheus'
+      honor_labels: true
+      metrics_path: '/federate'
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: ['istio-system']
+      metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'workload:(.*)'
+        target_label: __name__
+        action: replace
+      params:
+        'match[]':
+        - '{__name__=~"workload:(.*)"}'
+        - '{__name__=~"pilot(.*)"}'
+        - '{__name__=~"kubelet(.*)"}'
+        - '{__name__=~"container(.*)"}'
+      static_configs:
+      - targets:
+        - '10.240.0.97:9090'
+    remote_write:
+    - url: http://influxdb.metrics.svc.cluster.local:8086/api/v1/prom/write?db=prometheus
+    remote_read:
+    - url: http://influxdb.metrics.svc.cluster.local:8086/api/v1/prom/read?db=prometheus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: metrics
+  labels:
+    group: grafana
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+    - access: proxy
+      editable: true
+      isDefault: true
+      jsonData:
+        timeInterval: 5s
+      name: Prometheus
+      orgId: 1
+      type: prometheus
+      url: http://prometheus.metrics.svc.cluster.local:9090
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: influxdb-config
+  namespace: metrics
+  labels:
+    group: influxdb
+data:
+  influxdb.conf: |-
+    reporting-disabled = false
+    bind-address = ":8088"
+    [meta]
+      dir = "/var/lib/influxdb/meta"
+      retention-autocreate = true
+      logging-enabled = true
+    [data]
+      dir = "/var/lib/influxdb/data"
+      wal-dir = "/var/lib/influxdb/wal"
+      query-log-enabled = true
+      cache-max-memory-size = 1073741824
+      cache-snapshot-memory-size = 26214400
+      cache-snapshot-write-cold-duration = "10m0s"
+      compact-full-write-cold-duration = "4h0m0s"
+      max-series-per-database = 1000000
+      max-values-per-tag = 100000
+      trace-logging-enabled = false
+    [coordinator]
+      write-timeout = "10s"
+      max-concurrent-queries = 0
+      query-timeout = "0s"
+      log-queries-after = "0s"
+      max-select-point = 0
+      max-select-series = 0
+      max-select-buckets = 0
+    [retention]
+      enabled = true
+      check-interval = "30m0s"
+    [shard-precreation]
+      enabled = true
+      check-interval = "10m0s"
+      advance-period = "30m0s"
+    [monitor]
+      store-enabled = true
+      store-database = "_internal"
+      store-interval = "10s"
+    [subscriber]
+      enabled = true
+      http-timeout = "30s"
+      insecure-skip-verify = false
+      ca-certs = ""
+      write-concurrency = 40
+      write-buffer-size = 1000
+    [http]
+      enabled = true
+      bind-address = ":8086"
+      auth-enabled = false
+      log-enabled = true
+      write-tracing = false
+      pprof-enabled = true
+      https-enabled = false
+      https-certificate = "/etc/ssl/influxdb.pem"
+      https-private-key = ""
+      max-row-limit = 10000
+      max-connection-limit = 0
+      shared-secret = "chiguhaguchiguhagu"
+      realm = "InfluxDB"
+      unix-socket-enabled = false
+      bind-socket = "/var/run/influxdb.sock"
+---

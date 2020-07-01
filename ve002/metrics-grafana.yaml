@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: metrics
+  labels:
+    group: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      group: grafana
+  template:
+    metadata:
+      labels:
+        group: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:7.0.4
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GRAFANA_PORT
+          value: "3000"
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+        volumeMounts:
+        - mountPath: /data/grafana
+          name: data
+        - mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
+          name: config
+          subPath: datasources.yaml
+      volumes:
+      - configMap:
+          name: grafana-config
+        name: config
+      - emptyDir: {}
+        name: data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: metrics
+spec:
+  selector:
+    group: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
